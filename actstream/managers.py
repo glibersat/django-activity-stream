@@ -1,10 +1,10 @@
 from django.apps import apps
 from django.contrib.contenttypes.models import ContentType
+from django.contrib.sites.managers import CurrentSiteManager
 from django.db.models import Q
 
-
-from actstream.gfk import GFKManager
 from actstream.decorators import stream
+from actstream.gfk import GFKManager
 from actstream.registry import check
 
 
@@ -17,7 +17,7 @@ class ActionManager(GFKManager):
         """
         Only return public actions
         """
-        kwargs['public'] = True
+        kwargs["public"] = True
         return self.filter(*args, **kwargs)
 
     @stream
@@ -55,9 +55,11 @@ class ActionManager(GFKManager):
         check(model)
         ctype = ContentType.objects.get_for_model(model)
         return self.public(
-            (Q(target_content_type=ctype)
-             | Q(action_object_content_type=ctype)
-             | Q(actor_content_type=ctype)),
+            (
+                Q(target_content_type=ctype)
+                | Q(action_object_content_type=ctype)
+                | Q(actor_content_type=ctype)
+            ),
             **kwargs
         )
 
@@ -72,13 +74,17 @@ class ActionManager(GFKManager):
             Q(
                 actor_content_type=ctype,
                 actor_object_id=obj.pk,
-            ) | Q(
+            )
+            | Q(
                 target_content_type=ctype,
                 target_object_id=obj.pk,
-            ) | Q(
+            )
+            | Q(
                 action_object_content_type=ctype,
                 action_object_object_id=obj.pk,
-            ), **kwargs)
+            ),
+            **kwargs
+        )
 
     @stream
     def user(self, obj, with_user_activity=False, follow_flag=None, **kwargs):
@@ -94,15 +100,15 @@ class ActionManager(GFKManager):
         if with_user_activity:
             q = q | Q(
                 actor_content_type=ContentType.objects.get_for_model(obj),
-                actor_object_id=obj.pk
+                actor_object_id=obj.pk,
             )
 
-        follows = apps.get_model('actstream', 'follow').objects.filter(user=obj)
+        follows = apps.get_model("actstream", "follow").objects.filter(user=obj)
         if follow_flag:
             follows = follows.filter(flag=follow_flag)
 
         content_types = ContentType.objects.filter(
-            pk__in=follows.values('content_type_id')
+            pk__in=follows.values("content_type_id")
         )
 
         if not (content_types.exists() or with_user_activity):
@@ -110,20 +116,31 @@ class ActionManager(GFKManager):
 
         for content_type in content_types:
             object_ids = follows.filter(content_type=content_type)
-            q = q | Q(
-                actor_content_type=content_type,
-                actor_object_id__in=object_ids.values('object_id')
-            ) | Q(
-                target_content_type=content_type,
-                target_object_id__in=object_ids.filter(
-                    actor_only=False).values('object_id')
-            ) | Q(
-                action_object_content_type=content_type,
-                action_object_object_id__in=object_ids.filter(
-                    actor_only=False).values('object_id')
+            q = (
+                q
+                | Q(
+                    actor_content_type=content_type,
+                    actor_object_id__in=object_ids.values("object_id"),
+                )
+                | Q(
+                    target_content_type=content_type,
+                    target_object_id__in=object_ids.filter(actor_only=False).values(
+                        "object_id"
+                    ),
+                )
+                | Q(
+                    action_object_content_type=content_type,
+                    action_object_object_id__in=object_ids.filter(
+                        actor_only=False
+                    ).values("object_id"),
+                )
             )
 
         return qs.filter(q, **kwargs)
+
+
+class ActionOnSiteManager(CurrentSiteManager, ActionManager):
+    pass
 
 
 class FollowManager(GFKManager):
@@ -131,7 +148,7 @@ class FollowManager(GFKManager):
     Manager for Follow model.
     """
 
-    def for_object(self, instance, flag=''):
+    def for_object(self, instance, flag=""):
         """
         Filter to a specific instance.
         """
@@ -142,7 +159,7 @@ class FollowManager(GFKManager):
             queryset = queryset.filter(flag=flag)
         return queryset
 
-    def is_following(self, user, instance, flag=''):
+    def is_following(self, user, instance, flag=""):
         """
         Check if a user is following an instance.
         """
@@ -154,21 +171,20 @@ class FollowManager(GFKManager):
             queryset = queryset.filter(flag=flag)
         return queryset.filter(user=user).exists()
 
-    def followers_qs(self, actor, flag=''):
+    def followers_qs(self, actor, flag=""):
         """
         Returns a queryset of User objects who are following the given actor (eg my followers).
         """
         check(actor)
         queryset = self.filter(
-            content_type=ContentType.objects.get_for_model(actor),
-            object_id=actor.pk
-        ).select_related('user')
+            content_type=ContentType.objects.get_for_model(actor), object_id=actor.pk
+        ).select_related("user")
 
         if flag:
             queryset = queryset.filter(flag=flag)
         return queryset
 
-    def followers(self, actor, flag=''):
+    def followers(self, actor, flag=""):
         """
         Returns a list of User objects who are following the given actor (eg my followers).
         """
@@ -187,11 +203,11 @@ class FollowManager(GFKManager):
             ctype_filters |= Q(content_type=ContentType.objects.get_for_model(model))
         qs = qs.filter(ctype_filters)
 
-        flag = kwargs.get('flag', '')
+        flag = kwargs.get("flag", "")
 
         if flag:
             qs = qs.filter(flag=flag)
-        return qs.fetch_generic_relations('follow_object')
+        return qs.fetch_generic_relations("follow_object")
 
     def following(self, user, *models, **kwargs):
         """
@@ -199,6 +215,7 @@ class FollowManager(GFKManager):
         Items in the list can be of any model unless a list of restricted models are passed.
         Eg following(user, User) will only return users following the given user
         """
-        return [follow.follow_object for follow in self.following_qs(
-            user, *models, flag=kwargs.get('flag', '')
-        )]
+        return [
+            follow.follow_object
+            for follow in self.following_qs(user, *models, flag=kwargs.get("flag", ""))
+        ]

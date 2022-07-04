@@ -1,14 +1,15 @@
 from django.apps import apps
-from django.utils.translation import gettext_lazy as _
-from django.utils.timezone import now
 from django.contrib.contenttypes.models import ContentType
+from django.contrib.sites.shortcuts import get_current_site
+from django.utils.timezone import now
+from django.utils.translation import gettext_lazy as _
 
 from actstream import settings
-from actstream.signals import action
 from actstream.registry import check
+from actstream.signals import action
 
 
-def follow(user, obj, send_action=True, actor_only=True, flag='', **kwargs):
+def follow(user, obj, send_action=True, actor_only=True, flag="", **kwargs):
     """
     Creates a relationship allowing the object's activities to appear in the
     user's stream.
@@ -32,20 +33,22 @@ def follow(user, obj, send_action=True, actor_only=True, flag='', **kwargs):
         follow(request.user, group, actor_only=False, flag='liking')
     """
     check(obj)
-    instance, created = apps.get_model('actstream', 'follow').objects.get_or_create(
-        user=user, object_id=obj.pk, flag=flag,
+    instance, created = apps.get_model("actstream", "follow").objects.get_or_create(
+        user=user,
+        object_id=obj.pk,
+        flag=flag,
         content_type=ContentType.objects.get_for_model(obj),
-        actor_only=actor_only
+        actor_only=actor_only,
     )
     if send_action and created:
         if not flag:
-            action.send(user, verb=_('started following'), target=obj, **kwargs)
+            action.send(user, verb=_("started following"), target=obj, **kwargs)
         else:
-            action.send(user, verb=_('started %s' % flag), target=obj, **kwargs)
+            action.send(user, verb=_("started %s" % flag), target=obj, **kwargs)
     return instance
 
 
-def unfollow(user, obj, send_action=False, flag=''):
+def unfollow(user, obj, send_action=False, flag=""):
     """
     Removes a "follow" relationship.
 
@@ -60,9 +63,8 @@ def unfollow(user, obj, send_action=False, flag=''):
         unfollow(request.user, other_user, flag='watching')
     """
     check(obj)
-    qs = apps.get_model('actstream', 'follow').objects.filter(
-        user=user, object_id=obj.pk,
-        content_type=ContentType.objects.get_for_model(obj)
+    qs = apps.get_model("actstream", "follow").objects.filter(
+        user=user, object_id=obj.pk, content_type=ContentType.objects.get_for_model(obj)
     )
 
     if flag:
@@ -71,12 +73,12 @@ def unfollow(user, obj, send_action=False, flag=''):
 
     if send_action:
         if not flag:
-            action.send(user, verb=_('stopped following'), target=obj)
+            action.send(user, verb=_("stopped following"), target=obj)
         else:
-            action.send(user, verb=_('stopped %s' % flag), target=obj)
+            action.send(user, verb=_("stopped %s" % flag), target=obj)
 
 
-def is_following(user, obj, flag=''):
+def is_following(user, obj, flag=""):
     """
     Checks if a "follow" relationship exists.
 
@@ -91,9 +93,8 @@ def is_following(user, obj, flag=''):
     """
     check(obj)
 
-    qs = apps.get_model('actstream', 'follow').objects.filter(
-        user=user, object_id=obj.pk,
-        content_type=ContentType.objects.get_for_model(obj)
+    qs = apps.get_model("actstream", "follow").objects.filter(
+        user=user, object_id=obj.pk, content_type=ContentType.objects.get_for_model(obj)
     )
 
     if flag:
@@ -106,30 +107,34 @@ def action_handler(verb, **kwargs):
     """
     Handler function to create Action instance upon action signal call.
     """
-    kwargs.pop('signal', None)
-    actor = kwargs.pop('sender')
+    kwargs.pop("signal", None)
+    actor = kwargs.pop("sender")
 
     # We must store the unstranslated string
     # If verb is an ugettext_lazyed string, fetch the original string
-    if hasattr(verb, '_proxy____args'):
+    if hasattr(verb, "_proxy____args"):
         verb = verb._proxy____args[0]
 
-    newaction = apps.get_model('actstream', 'action')(
+    newaction = apps.get_model("actstream", "action")(
+        site=get_current_site(request=None),
         actor_content_type=ContentType.objects.get_for_model(actor),
         actor_object_id=actor.pk,
         verb=str(verb),
-        public=bool(kwargs.pop('public', True)),
-        description=kwargs.pop('description', None),
-        timestamp=kwargs.pop('timestamp', now())
+        public=bool(kwargs.pop("public", True)),
+        description=kwargs.pop("description", None),
+        timestamp=kwargs.pop("timestamp", now()),
     )
 
-    for opt in ('target', 'action_object'):
+    for opt in ("target", "action_object"):
         obj = kwargs.pop(opt, None)
         if obj is not None:
             check(obj)
-            setattr(newaction, '%s_object_id' % opt, obj.pk)
-            setattr(newaction, '%s_content_type' % opt,
-                    ContentType.objects.get_for_model(obj))
+            setattr(newaction, "%s_object_id" % opt, obj.pk)
+            setattr(
+                newaction,
+                "%s_content_type" % opt,
+                ContentType.objects.get_for_model(obj),
+            )
     if settings.USE_JSONFIELD and len(kwargs):
         newaction.data = kwargs
     newaction.save(force_insert=True)
